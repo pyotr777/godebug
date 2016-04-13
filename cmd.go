@@ -4,22 +4,24 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	log "github.com/Sirupsen/logrus"
+	"github.com/mailgun/godebug/Godeps/_workspace/src/bitbucket.org/JeremySchlatter/go-atexit"
+	"github.com/mailgun/godebug/Godeps/_workspace/src/github.com/kisielk/gotool"
+	"github.com/mailgun/godebug/Godeps/_workspace/src/golang.org/x/tools/go/loader"
+	"github.com/mailgun/godebug/gen"
 	"go/ast"
 	"go/build"
 	"io"
 	"io/ioutil"
-	"log"
+	// "log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/mailgun/godebug/Godeps/_workspace/src/bitbucket.org/JeremySchlatter/go-atexit"
-	"github.com/mailgun/godebug/Godeps/_workspace/src/github.com/kisielk/gotool"
-	"github.com/mailgun/godebug/Godeps/_workspace/src/golang.org/x/tools/go/loader"
-	"github.com/mailgun/godebug/gen"
 )
+
+const debug bool = true
 
 var (
 	outputFlags flag.FlagSet
@@ -158,12 +160,19 @@ source files. Use with caution.
 }
 
 func main() {
-	log.SetFlags(0)
+	log.SetLevel(log.DebugLevel)
+	if debug {
+		log.Print("Start main")
+	}
 	atexit.TrapSignals()
 	defer atexit.CallExitFuncs()
+	if debug {
+		log.Debugf("Start main with command %s", os.Args)
+	}
 	if len(os.Args) == 1 {
 		usage()
 	}
+
 	switch os.Args[1] {
 	case "help":
 		doHelp(os.Args[2:])
@@ -172,6 +181,9 @@ func main() {
 	case "run":
 		doRun(os.Args[2:])
 	case "build":
+		if debug {
+			log.Debugf("Building with flags %s", os.Args[2:])
+		}
 		doBuild(os.Args[2:])
 	case "test":
 		doTest(os.Args[2:])
@@ -199,7 +211,15 @@ func doHelp(args []string) {
 }
 
 func doBuild(args []string) {
-	exitIfErr(buildFlags.Parse(args))
+	debugger_flags, compiler_flags, err := SeparateFlags(args)
+	if debug {
+		log.Debugf("Debugger flags: %s\nCompiler flags: %s", debugger_flags, compiler_flags)
+	}
+	if err != nil {
+		log.Errorf("Error obtaining argumengs: %s", err)
+		return
+	}
+	exitIfErr(buildFlags.Parse(strings.Split(debugger_flags, " ")))
 	goArgs, isPkg := parseBuildArguments(buildFlags.Args())
 
 	conf := newLoader()
@@ -208,13 +228,14 @@ func doBuild(args []string) {
 	} else {
 		exitIfErr(conf.CreateFromFilenames("main", goArgs...))
 	}
+	joined_args := append(goArgs, strings.Split(compiler_flags, " ")...)
 
 	tmpDir := generateSourceFiles(&conf, "build")
 	tmpFile := filepath.Join(tmpDir, "godebug.-i.a.out")
 
 	if doGopathWorkaround {
 		// Rebuild stale packages, since this version of Go will not do so by default.
-		shellGo("", []string{"build", "-o", tmpFile, "-tags", *tags, "-i"}, goArgs)
+		shellGo("", []string{"build", "-o", tmpFile, "-tags", *tags, "-i"}, joined_args)
 	}
 
 	if isPkg {
@@ -228,7 +249,17 @@ func doBuild(args []string) {
 		bin = *o
 	}
 
-	shellGo(tmpDir, []string{"build", "-o", bin, "-tags", *tags}, goArgs)
+	shellGo(tmpDir, []string{"build", "-o", bin, "-tags", *tags}, joined_args)
+}
+
+// Split arguments by ":" and returns the first and the second elements
+func SeparateFlags(all_args []string) (string, string, error) {
+	args := strings.Join(all_args, " ")
+	args_arr := strings.Split(args, ":")
+	if len(args_arr) < 2 {
+		return args_arr[0], "", nil
+	}
+	return args_arr[0], args_arr[1], nil
 }
 
 func doRun(args []string) {
