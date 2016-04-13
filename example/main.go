@@ -4,6 +4,7 @@ import "fmt"
 
 func main() {
 	x := mul(1, 2)
+	fmt.Println(x)
 	_ = "breakpoint"
 	x = mul(x, x)
 	if x == 4 {

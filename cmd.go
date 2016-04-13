@@ -13,10 +13,10 @@ import (
 	"go/build"
 	"io"
 	"io/ioutil"
-	// "log"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
 )
@@ -167,7 +167,7 @@ func main() {
 	atexit.TrapSignals()
 	defer atexit.CallExitFuncs()
 	if debug {
-		log.Debugf("Start main with command %s", os.Args)
+		log.Debugf("Start main with command %s", os.Args[1])
 	}
 	if len(os.Args) == 1 {
 		usage()
@@ -213,7 +213,8 @@ func doHelp(args []string) {
 func doBuild(args []string) {
 	debugger_flags, compiler_flags, err := SeparateFlags(args)
 	if debug {
-		log.Debugf("Debugger flags: %s\nCompiler flags: %s", debugger_flags, compiler_flags)
+		log.Debugf("Debugger flags: %s", debugger_flags)
+		log.Debugf("Compiler flags: %s", compiler_flags)
 	}
 	if err != nil {
 		log.Errorf("Error obtaining argumengs: %s", err)
@@ -235,7 +236,7 @@ func doBuild(args []string) {
 
 	if doGopathWorkaround {
 		// Rebuild stale packages, since this version of Go will not do so by default.
-		shellGo("", []string{"build", "-o", tmpFile, "-tags", *tags, "-i"}, joined_args)
+		shellGo("", []string{"build", "-o", tmpFile, "-tags", *tags}, joined_args)
 	}
 
 	if isPkg {
@@ -280,8 +281,7 @@ func doRun(args []string) {
 
 	if doGopathWorkaround {
 		// Rebuild stale packages, since this version of Go will not do so by default.
-		shellGo("", []string{"build", "-o", os.DevNull, "-tags", *tags, "-i"},
-			gofiles)
+		shellGo("", []string{"build", "-o", os.DevNull, "-tags", *tags}, gofiles)
 	}
 
 	// Run 'go build', then run the binary.
@@ -322,7 +322,7 @@ func doTest(args []string) {
 	// This will recompile and install any out-of-date packages.
 	// When we modify the GOPATH in the next invocation of the go tool,
 	// it will not check if any of the uninstrumented dependencies are out-of-date.
-	shellGo("", []string{"test", "-tags", *tags, "-i"}, packages)
+	shellGo("", []string{"test", "-tags", *tags}, packages)
 
 	// The target binary goes to -o if specified, otherwise to the default name
 	// if -c is specified, otherwise to the temporary directory.
@@ -502,7 +502,20 @@ func getGoFiles() (gofiles, rest []string) {
 }
 
 func shellGo(tmpDir string, goArgs, packages []string) {
-	shell(tmpDir, "go", append(goArgs, packages...)...)
+	if debug {
+		log.Debugf("Called shellGo(%s,%s,%s)", tmpDir, goArgs, packages)
+		log.Debugf("Packages %d", len(packages))
+		log.Debugf("Type   = %s", reflect.TypeOf(packages))
+	}
+	if len(packages) < 1 {
+		if debug {
+			log.Debugf("Executing go %s", goArgs)
+		}
+		shell(tmpDir, "go", goArgs...)
+	} else {
+		goArgs := append(goArgs, "-i")
+		shell(tmpDir, "go", append(goArgs, packages...)...)
+	}
 }
 
 func shell(gopath, command string, args ...string) {
