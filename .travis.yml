@@ -1,9 +1,11 @@
 language: go
 
 go:
-  - 1.4
+  - 1.6
 
-install: go install
+install: 
+  - go install
+  - go get github.com/Sirupsen/logrus
 
 script: go test -v --parallel-tests=10
 
