@@ -162,15 +162,18 @@ source files. Use with caution.
 
 func main() {
 	if debug {
-		log.Print("Start godebug in debug mode")
+		logrus.Print("Start godebug in debug mode")
+		logrus.SetLevel(logrus.DebugLevel)
 	}
 	atexit.TrapSignals()
 	defer atexit.CallExitFuncs()
-	if debug {
-		logrus.Debugf("Start main with command %s", os.Args[1])
-	}
 	if len(os.Args) == 1 {
 		usage()
+	}
+	if debug {
+		if len(os.Args) > 1 {
+			logrus.Debugf("Flags: %s", os.Args[2:])
+		}
 	}
 
 	switch os.Args[1] {
@@ -181,9 +184,6 @@ func main() {
 	case "run":
 		doRun(os.Args[2:])
 	case "build":
-		if debug {
-			logrus.Debugf("Building with flags %s", os.Args[2:])
-		}
 		doBuild(os.Args[2:])
 	case "test":
 		doTest(os.Args[2:])
@@ -212,6 +212,8 @@ func doHelp(args []string) {
 
 func doBuild(args []string) {
 	debugger_flags, compiler_flags, err := SeparateFlags(args)
+	debugger_flags = strings.TrimSpace(debugger_flags)
+	compiler_flags = strings.TrimSpace(compiler_flags)
 	if debug {
 		logrus.Debugf("Debugger flags: %s", debugger_flags)
 		logrus.Debugf("Compiler flags: %s", compiler_flags)
@@ -220,9 +222,20 @@ func doBuild(args []string) {
 		logrus.Errorf("Error obtaining argumengs: %s", err)
 		return
 	}
-	exitIfErr(buildFlags.Parse(strings.Split(debugger_flags, " ")))
+	if debugger_flags != "" {
+		debugger_flags_arr := strings.Split(debugger_flags, " ")
+		if len(debugger_flags_arr) == 1 {
+			if debugger_flags_arr[0] == "" {
+				debugger_flags_arr = debugger_flags_arr[:0]
+				if debug {
+					logrus.Debugf("Trimed debugger flags to length %v", len(debugger_flags_arr))
+				}
+			}
+		}
+		exitIfErr(buildFlags.Parse(debugger_flags_arr))
+	}
 	if debug {
-		logrus.Debugf("Build arguments: %s", buildFlags.Args())
+		logrus.Debugf("Build arguments: %s, length=%v", buildFlags.Args(), len(buildFlags.Args()))
 	}
 	goArgs, isPkg := parseBuildArguments(buildFlags.Args())
 
@@ -232,7 +245,12 @@ func doBuild(args []string) {
 	} else {
 		exitIfErr(conf.CreateFromFilenames("main", goArgs...))
 	}
-	joined_args := append(goArgs, strings.Split(compiler_flags, " ")...)
+	var joined_args []string
+	if compiler_flags != "" {
+		joined_args = append(goArgs, strings.Split(compiler_flags, " ")...)
+	} else {
+		joined_args = goArgs
+	}
 
 	tmpDir := generateSourceFiles(&conf, "build")
 	tmpFile := filepath.Join(tmpDir, "godebug.-i.a.out")
@@ -517,7 +535,11 @@ func shellGo(tmpDir string, goArgs, packages []string) {
 		shell(tmpDir, "go", goArgs...)
 	} else {
 		goArgs := append(goArgs, "-i")
-		shell(tmpDir, "go", append(goArgs, packages...)...)
+		goArgs = append(goArgs, packages...)
+		if debug {
+			logrus.Debugf("Executing go %s", goArgs)
+		}
+		shell(tmpDir, "go", goArgs...)
 	}
 }
 
