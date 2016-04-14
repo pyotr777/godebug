@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	log "github.com/Sirupsen/logrus"
+	"github.com/Sirupsen/logrus"
 	"github.com/mailgun/godebug/Godeps/_workspace/src/bitbucket.org/JeremySchlatter/go-atexit"
 	"github.com/mailgun/godebug/Godeps/_workspace/src/github.com/kisielk/gotool"
 	"github.com/mailgun/godebug/Godeps/_workspace/src/golang.org/x/tools/go/loader"
@@ -13,6 +13,7 @@ import (
 	"go/build"
 	"io"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +22,7 @@ import (
 	"strings"
 )
 
-const debug bool = true
+var debug bool = (os.Getenv("DEBUG") != "" && os.Getenv("DEBUG") != "0" && os.Getenv("DEBUG") != "false")
 
 var (
 	outputFlags flag.FlagSet
@@ -48,7 +49,7 @@ func init() {
 }
 
 func usage() {
-	log.Print(
+	fmt.Print(
 		`godebug is a tool for debugging Go programs.
 
 Usage:
@@ -81,7 +82,7 @@ temporary work directory and not delete it when exiting.
 `
 
 func runUsage() {
-	log.Print(
+	fmt.Print(
 		`usage: godebug run [-godebugwork] [-instrument pkgs...] [-tags 'tag list'] gofiles... [--] [arguments...]
 
 Run emulates 'go run' behavior. It generates debugging code for the
@@ -94,7 +95,7 @@ binary. Optionally, a '--' argument ends the list of gofiles.
 }
 
 func buildUsage() {
-	log.Print(
+	fmt.Print(
 		`usage: godebug build [-godebugwork] [-instrument pkgs...] [-tags 'tag list'] [-o output] [package]
 
 Build is a wrapper around 'go build'. It generates debugging code for
@@ -110,7 +111,7 @@ The output file naming if -o is not passed works like 'go build' (see
 }
 
 func testUsage() {
-	log.Print(
+	fmt.Print(
 		`usage: godebug test [-godebugwork] [-instrument pkgs...] [-tags 'tag list'] [-c] [-o output] [packages] [flags for test binary]
 
 Test is a wrapper around 'go test'. It generates debugging code for
@@ -127,7 +128,7 @@ prefix like '-test.v'.
 }
 
 func outputUsage() {
-	log.Print(
+	fmt.Print(
 		`usage: godebug output [-w] <packages>
 
 Output outputs debugging code for <packages>.
@@ -160,14 +161,13 @@ source files. Use with caution.
 }
 
 func main() {
-	log.SetLevel(log.DebugLevel)
 	if debug {
-		log.Print("Start main")
+		log.Print("Start godebug in debug mode")
 	}
 	atexit.TrapSignals()
 	defer atexit.CallExitFuncs()
 	if debug {
-		log.Debugf("Start main with command %s", os.Args[1])
+		logrus.Debugf("Start main with command %s", os.Args[1])
 	}
 	if len(os.Args) == 1 {
 		usage()
@@ -182,7 +182,7 @@ func main() {
 		doRun(os.Args[2:])
 	case "build":
 		if debug {
-			log.Debugf("Building with flags %s", os.Args[2:])
+			logrus.Debugf("Building with flags %s", os.Args[2:])
 		}
 		doBuild(os.Args[2:])
 	case "test":
@@ -213,14 +213,17 @@ func doHelp(args []string) {
 func doBuild(args []string) {
 	debugger_flags, compiler_flags, err := SeparateFlags(args)
 	if debug {
-		log.Debugf("Debugger flags: %s", debugger_flags)
-		log.Debugf("Compiler flags: %s", compiler_flags)
+		logrus.Debugf("Debugger flags: %s", debugger_flags)
+		logrus.Debugf("Compiler flags: %s", compiler_flags)
 	}
 	if err != nil {
-		log.Errorf("Error obtaining argumengs: %s", err)
+		logrus.Errorf("Error obtaining argumengs: %s", err)
 		return
 	}
 	exitIfErr(buildFlags.Parse(strings.Split(debugger_flags, " ")))
+	if debug {
+		logrus.Debugf("Build arguments: %s", buildFlags.Args())
+	}
 	goArgs, isPkg := parseBuildArguments(buildFlags.Args())
 
 	conf := newLoader()
@@ -503,13 +506,13 @@ func getGoFiles() (gofiles, rest []string) {
 
 func shellGo(tmpDir string, goArgs, packages []string) {
 	if debug {
-		log.Debugf("Called shellGo(%s,%s,%s)", tmpDir, goArgs, packages)
-		log.Debugf("Packages %d", len(packages))
-		log.Debugf("Type   = %s", reflect.TypeOf(packages))
+		logrus.Debugf("Called shellGo(%s,%s,%s)", tmpDir, goArgs, packages)
+		logrus.Debugf("Packages %d", len(packages))
+		logrus.Debugf("Type   = %s", reflect.TypeOf(packages))
 	}
 	if len(packages) < 1 {
 		if debug {
-			log.Debugf("Executing go %s", goArgs)
+			logrus.Debugf("Executing go %s", goArgs)
 		}
 		shell(tmpDir, "go", goArgs...)
 	} else {
